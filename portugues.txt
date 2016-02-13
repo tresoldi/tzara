@@ -1,0 +1,189 @@
+O sistema funciona lendo um arquivo puro texto, de gramática, e
+indicando qual regra deve ser gerada. Assim:
+
+```
+tzara.py gramatica.pb frase-de-efeito
+```
+
+carregaria o arquivo `gramatica.pb` e geraria a regra `frase-de-efeito`.
+
+O texto pode ter comentários: os comentários começam com o sinal # e
+vão até o final de cada linha.
+
+As regras podem conter strings (delimitadas por aspas) ou referências a
+outras regras; as opções são separadas por barras verticais ("|") e as
+regras terminam com ponto-e-vírgula. O nome da regra e a definição da regra são
+separados por dois pontos e é possível ter quebras de linha dentro de
+uma regras. Assim, uma gramática básica pode ser esta:
+
+```
+# gramática de exemplo
+
+frase: pronome " " adverbio " vai " verbo " " fruta "!!!";
+pronome: "Ele" | "Ela";
+adverbio: "sempre" | "nunca";
+verbo: "amar" |
+       "gostar de" |
+       "odiar" |
+       "desprezar";
+fruta: "banana" | "laranja" | "pêra" | "uva" | "maçã";
+```
+
+Se for pedido para se gerar, por exemplo, a regra `pronome`, por exemplo,
+o sistema retornará, aleatoriamente, ou "Ele" ou "Ela". A regra mais
+complexa, `frase` pode retornar uma grande quantidade de frases diferentes,
+como "Ele sempre vai amar banana!!!", "Ela nunca vai desprezar maçã!!!" ou
+"Ele nunca vai gostar de laranja!!!". Como uma regra pode chamar outras
+regras, que por sua vez podem chamar mais regras, é possível criar textos
+bastante complexos; inclusive, cabe lembrar que o sistema é recursivo,
+de modo que uma regra pode chamar a si própria direta ou indiretamente.
+
+É possível mesmo uma regra que em certas ocasiões gere texto, e em outras
+não; por exemplo, na gramática acima poderíamos muder `adverbio` para:
+
+```
+adverbio: "sempre" | "nunca" | "";
+```
+
+de modo que uma vez a cada três seria escolhida a última opção, que não gera
+nenhum texto.
+
+Uma vantagem do sistema é que toda a opção, mesmo quando não especificado,
+possui um "peso", que indica quanto é provável que ela seja escolhida numa
+geração de texto (o valor padrão é 1). Este valor é um número indicado
+após um sinal de porcentagem; 
+poderíamos mudar a regra `fruta` acima para:
+
+``` 
+fruta: "banana" % 2 | "laranja" % 2 | "pêra" | "uva" | "maçã" % 10;
+```
+
+Neste caso, os pesos seriam "banana"-2, "laranja"-2, "pêra"-1, "uva"-1 e
+"maçã"-10, indicando que, por exemplo, "banana" tem duas vezes mais chances
+de ser sorteado que "uva", e "maçã" cinco vezes mais chances que "laranja".
+
+Outra vantagem do sistema é que, por um complexo levantamento das opções de
+cada regra, ele busca sempre que possível oferecer textos gerados 
+diferentes a cada chamada consecutiva. Assim, se tivéssemos uma nova regra
+
+```
+frase-gosto: "Eu gosto de " fruta " e de " fruta;
+```
+
+mesmo com "maçã" sendo bem mais provável que as demais frutas da lista, o
+sistema tentaria escolher duas frutas diferentes. Isto funciona tanto com
+listas de strings quanto com mais complexas regras que chamam outras regras.
+
+Outra vantagem é que o sistema permite definir novas regras durante a
+execução, de modo que o texto será adaptado a partir dos resultados dos
+primeiros sorteios. Se mudarmos esta última regra para:
+
+```
+frase-gosto: "Eu gosto de " minha-fruta<fruta;
+```
+
+o sistema não apenas irá escolher um item da regra `fruta` e juntar ao texto
+"Eu gosto de ", mas vai armazenar esta escolha na nova regra `minha-fruta`,
+que ficará disponível para utilização até o final da geração deste texto,
+mudando a cada nova geração.
+
+Esta nova regra não será regravada, assim podemos escrever várias regras
+que se referem a `minha-fruta` usando esta sintaxe `minha-fruta<fruta`, de modo
+que apenas na primeira ocorrência dela o valor será escolhido aleatoriamente
+entre as opções de `fruta`, reproduzindo o valor em todas as eventuais chamadas
+subsequentes.
+
+Esta operação se chama `set`, e existe uma operação similar que é `override`;
+a diferença é que, neste caso, o valor da nova é regravado (ou gerado pela
+primeira vez, se necessário). Assim, em
+
+```
+frase-gosto2: "Eu gosto de " minha-fruta<<fruta;
+```
+
+(veja que há dois sinais de menor) o valor de `minha-fruta` é substituido
+por uma nova chamada a `fruta`.
+
+Como o sistema é dinâmico, é possível regravar as próprias regras da
+gramática. É possível, por exemplo, criar uma regra como:
+
+```
+frase-gosto3: "Eu gosto de " fruta<<fruta;
+```
+
+que irá modificar a gramática carregada do arquivo, retornando uma única
+fruta até o final da geração do texto em questão (obviamente a gramática
+alterada não é gravada de volta pro arquivo, a modificação só perdura
+durante a execução).
+
+O sistema também permite regras "silenciosas", ou seja que usam estes comandos
+`set` e `override`, mudando a gramática, sem emitir nenhum texto no momento
+em que isso acontece. Isto é útil em sistemas mais complexos, nos quais
+podemos estabelecer todas as nossas variáveis no início, com regras silenciosas,
+e só depois passar à geração do texto propriamente dita. Estas regras
+também permitem gerar uma nova regra antes de se chamar outra parte
+da gramática, como se fossemos carregar um valor temporário. Isto aparece
+no exemplo abaixo, no qual se mostra que para uma regra ser silenciosa basta
+adicionar um ponto de interrogação à frente do comando:
+
+```
+frase-gosto4: ?fruta-temporaria<<fruta minha-frase;
+minha-frase: "Eu adoro "
+             fruta-temporaria
+             "! Eu já disse que adoro "
+             fruta-temporaria
+             "? Pois bem, eu adoro "
+             fruta-temporaria;
+```
+
+Ao se chamar `frase-gosto4`, a regra `fruta-temporaria` é criada
+silenciosamente, e então é chamada a regra `minha-frase`, na qual ela
+é usada três vezes. Como esta `fruta-temporaria` não muda dentro da regra
+`minha-frase`, garantimos que ela seja repetida três vezes (lembramos que 
+o sistema tenta sempre *não* repetir o texto gerado por uma regra), obtendo
+frases como "Eu adoro laranja! Eu já disse que adoro laranja? Pois bem,
+eu adoro laranja".
+
+Uma grande capacidade do sistema é que o resultado de uma regra pode ser
+usado como parte do nome de outra regra, permitindo sistemas altamente
+complexos. Para isto, basta encapsular a chamada a uma regra em
+colchetes ({ e }). Assim, podemos montar um mini motor de tradução como
+aquele abaixo:
+
+```
+colorname: "red" | "green" | "blue";
+português-red: "vermelho";
+português-green: "verde";
+português-blue: "azul";
+frase-cor: "Minha cor preferida é o " português-{colorname};
+```
+
+Ao chamarmos `frase-cor`, o sistema primeiro resolve a chamada à regra
+`colorname`, resultando em um novo símbolo (isto é, nome de regra)
+português-red, português-green ou português-blue. Com o nome da nova
+regra, ela é chamada automaticamente para frases como "Minha cor
+preferida é o verde". Obviamente, o sistema pode ser mais complexo,
+e as regras chamadas (como, aqui, português-green) são regras
+normais, que poderiam ou ser chamadas diretamente por seu nome em outras
+regras, ou conter várias opções, comandos *set* e *override*, etc.
+
+Por fim, o sistema possui algumas funções para manipulação de texto. A
+maioria se refere, por enquanto, à geração para o inglês, mas
+algumas podem ser usadas em geral:
+
+* upper - converte toda uma string para maiusculas (`teste` vira
+`TESTE`)
+* lower - converte toda uma string para minusculas (`TESTE` vira
+`teste`)
+* upcase-first - converte apenas o primeiro caractere de uma string para maiscula (`teste` vira `Teste`, `teSTE` becomes `TeSTE`)
+* capitalize - converte o primeiro caractere para maiuscula e todos os demais para minusculas (`teste` vira `Testr`, `teSTE` becomes `Teste`)
+
+Estas funções, e outras que podem vir a ser escritas, são chamadas com
+o sinal de arroba:
+
+```
+nome: "maria" | "joão";
+frase: "Meu nome é " nome@upcase-first;
+```
+
+retornaria "Meu nome é Maria" ou "Meu nome é João".
