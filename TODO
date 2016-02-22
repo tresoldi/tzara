@@ -1,7 +1,0 @@
-* Rewrite the parser
-* Separate a module to be loaded as library, without the command-line handling
-* Rewrite the engine with either user dictionaries or complete object-like system
-* Do a sane and not ad-hoc cache system, especially without so many entropy calculations
-  if possible
-* Add more examples (maybe translate from the Dada Engine?)
-* Study improvements in the language from Lisp languages
